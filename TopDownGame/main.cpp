@@ -1,137 +1,113 @@
 #include <raylib.h>
 #include <raymath.h>
-
-class Character
-{
-public:
-    Vector2 getWorldPos() { return worldPos; }
-    void setScreenPos(int windowWidth, int windowHeight) {};
-    void tick(float deltaTime) {};
-
-private:
-    Texture2D texture{LoadTexture("characters/knight_idle_spritesheet.png")};
-    Texture2D run{LoadTexture("characters/knight_run_spritesheet.png")};
-    Texture2D idle{LoadTexture("characters/knight_idle_spritesheet.png")};
-    Vector2 screenPos;
-    Vector2 worldPos;
-
-    // 1 is facing right, -1 is facing left
-    float rightLeft = 1.0;
-    // animation vars
-    float speed = 4.0;
-    float runningTime{};
-    float updateTime = 1.0 / 12.0;
-    int frame{};
-    const int maxFrames{6};
-};
-
-void Character::setScreenPos(int windowWidth, int windowHeight)
-{
-    screenPos = {
-        windowWidth / 2.0f - 4.0f * (texture.width / 6.0f) * 0.5f,
-        windowHeight / 2.0f - 4.0f * (texture.height) * 0.5f};
-}
-
-void Character::tick(float deltaTime)
-{
-    Vector2 direction{};
-    if (IsKeyDown(KEY_A))
-        direction.x -= 1.0;
-    if (IsKeyDown(KEY_D))
-        direction.x += 1.0;
-    if (IsKeyDown(KEY_W))
-        direction.y -= 1.0;
-    if (IsKeyDown(KEY_S))
-        direction.y += 1.0;
-    if (Vector2Length(direction) != 0)
-    {
-        // set worldPos = worldPos + direction
-        worldPos = Vector2Add(worldPos, Vector2Scale(Vector2Normalize(direction), speed));
-        direction.x < 0 ? rightLeft = -1 : rightLeft = 1;
-        texture = run;
-    }
-    else
-    {
-        texture = idle;
-    }
-
-    // Update animation
-    runningTime += deltaTime;
-    if (runningTime >= updateTime)
-    {
-        runningTime = 0;
-        frame++;
-        if (frame > maxFrames)
-            frame = 0;
-    }
-}
+#include "Character.h"
+#include "Prop.h"
+#include "Enemy.h"
+#include <string>
 
 int main()
 {
-    const int windowWidth = 1620;
-    const int windowHeigth = 920;
+    const int windowWidth = 384;
+    const int windowHeigth = 384;
 
     InitWindow(windowWidth, windowHeigth, "Top Down Game");
-    SetTargetFPS(144);
+
+    Character knight(windowWidth, windowHeigth);
+    Prop props[2]{
+        Prop{Vector2{600, 300}, LoadTexture("nature_tileset/Rock.png")},
+        Prop{Vector2{300, 900}, LoadTexture("nature_tileset/Log.png")},
+
+    };
+
+    Enemy enemyGoblin{
+        Vector2{800, 600},
+        LoadTexture("characters/goblin_idle_spritesheet.png"),
+        LoadTexture("characters/goblin_run_spritesheet.png")};
+
+    Enemy enemySlime{
+        Vector2{200, 300},
+        LoadTexture("characters/slime_idle_spritesheet.png"),
+        LoadTexture("characters/slime_run_spritesheet.png")};
+
+    Enemy *enemies[]{
+        &enemyGoblin,
+        &enemySlime};
+
+    for (auto enemy : enemies)
+    {
+        enemy->setTarget(&knight);
+    }
 
     Texture2D map = LoadTexture("nature_tileset/OpenWorldMap24x24.png");
     Vector2 mapPos{0, 0};
+    const float mapScale{4};
 
-    Texture2D knight{};
-    Texture2D knightRun = LoadTexture("characters/knight_run_spritesheet.png");
-    Vector2 knightRunPos{windowWidth / 2 - 4 * (0.5 * knightRun.width / 6),
-                         windowHeigth / 2 - 4 * (0.5 * knightRun.height)};
-
-    Texture2D knightIdle = LoadTexture("characters/knight_idle_spritesheet.png");
-    Vector2 knightIdlePos{windowWidth / 2 - 4 * (0.5 * knightIdle.width / 6),
-                          windowHeigth / 2 - 4 * (0.5 * knightIdle.height)};
-
-    // Character speed
-    float speed = 4.0;
-
+    SetTargetFPS(144);
     while (!WindowShouldClose())
     {
         BeginDrawing();
         ClearBackground(WHITE);
 
-        Vector2 direction{};
-        if (IsKeyDown(KEY_A))
-            direction.x -= 1.0;
-        if (IsKeyDown(KEY_D))
-            direction.x += 1.0;
-        if (IsKeyDown(KEY_W))
-            direction.y -= 1.0;
-        if (IsKeyDown(KEY_S))
-            direction.y += 1.0;
-        if (Vector2Length(direction) != 0)
-        {
-            // set mapPos = mapPos - direction
-            mapPos = Vector2Subtract(mapPos, Vector2Scale(Vector2Normalize(direction), speed));
-            direction.x < 0 ? rightLeft = -1 : rightLeft = 1;
-            knight = knightRun;
-        }
-        else
-        {
-            knight = knightIdle;
-        }
+        // Update map position
+        mapPos = Vector2Scale(knight.getWorldPos(), -1);
 
         // Draw the map
-        DrawTextureEx(map, mapPos, 0, 4, WHITE);
+        DrawTextureEx(map, mapPos, 0, mapScale, WHITE);
 
-        // Update animation
-        runningTime += GetFrameTime();
-        if (runningTime >= updateTime)
+        // Draw the props
+        for (auto prop : props)
         {
-            runningTime = 0;
-            frame++;
-            if (frame > maxFrames)
-                frame = 0;
+            prop.Render(knight.getWorldPos());
         }
 
-        // Draw the character
-        Rectangle source{knightIdle.width / 6 * frame, 0, rightLeft * knightIdle.width / 6, knightIdle.height};
-        Rectangle dest{knightIdlePos.x, knightIdlePos.y, 4 * knightIdle.width / 6, 4 * knightIdle.height};
-        DrawTexturePro(knight, source, dest, Vector2{0, 0}, 0, WHITE);
+        if (!knight.getAliveStatus()) // character is not alive
+        {
+            DrawText("Game over!", 55, 45, 40, RED);
+            EndDrawing();
+            continue;
+        }
+        else // character is alive
+        {
+            std::string knightHealth = "Health: ";
+            knightHealth.append(std::to_string(knight.getHealth()), 0, 5);
+            DrawText(knightHealth.c_str(), 55, 45, 40, GREEN);
+        }
+
+        // Draw and animate knight
+        knight.tick(GetFrameTime());
+        if (knight.getWorldPos().x < 0 ||
+            knight.getWorldPos().y < 0 ||
+            knight.getWorldPos().x + windowWidth > map.width * mapScale ||
+            knight.getWorldPos().y + windowHeigth > map.height * mapScale)
+        {
+            knight.undoMovement();
+        }
+
+        // Check collissions
+        for (auto prop : props)
+        {
+            if (CheckCollisionRecs(knight.getCollissionRec(), prop.getCollissionRec(knight.getWorldPos())))
+            {
+                knight.undoMovement();
+            }
+        }
+
+        for (auto enemy : enemies)
+        {
+            enemy->tick(GetFrameTime());
+        }
+
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        {
+            for (auto enemy : enemies)
+            {
+            if (CheckCollisionRecs(enemy->getCollissionRec(), knight.getWeaponCollisionRec()))
+            {
+                enemy->setAlive(false);
+            }
+        }
+        }
+
         EndDrawing();
     }
     UnloadTexture(map);
